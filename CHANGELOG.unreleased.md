@@ -11,6 +11,8 @@
 
 > Users must be able to say: “I had this issue, happy to know it's fixed”
 
+- [Home/VMs] Filtering with a UUID will no longer show other VMs on the same host/pool
+
 ### Packages to release
 
 > When modifying a package, add it here with its release type.
@@ -28,5 +30,6 @@
 <!--packages-start-->
 
 - @vates/nbd-client patch
+- xo-web patch
 
 <!--packages-end-->
