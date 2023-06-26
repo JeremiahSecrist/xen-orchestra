@@ -285,12 +285,14 @@ export default class RestApi {
 
     let xoConfigEnabled = true
     const xoConfigBackups = keyBy(
-      {
-        id: 27,
-        created_at: 1687786089427,
-        license_id: 'l_JDJ5JDEwJHVkcmhFZXg4Y3RCbUMvZEw1SGhEUmVaQ2VRdVVXLkVqOVh2MGF3R2hvNW9HSG5VMFZneDdX',
-        content: '/rest/v0/cloud/xo-config/backups/27/config.json.gz.enc',
-      },
+      [
+        {
+          id: 27,
+          created_at: 1687786089427,
+          license_id: 'l_JDJ5JDEwJHVkcmhFZXg4Y3RCbUMvZEw1SGhEUmVaQ2VRdVVXLkVqOVh2MGF3R2hvNW9HSG5VMFZneDdX',
+          content: '/rest/v0/cloud/xo-config/backups/27/config.json.gz.enc',
+        },
+      ],
       'id'
     )
     api
