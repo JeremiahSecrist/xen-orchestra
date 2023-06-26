@@ -49,7 +49,7 @@ async function sendObjects(iterable, req, res, path = req.path) {
   const { query } = req
 
   const basePath = join(req.baseUrl, path)
-  const makeUrl = object => join(basePath, object.id)
+  const makeUrl = ({ id }) => join(basePath, typeof id === 'number' ? String(id) : id)
 
   let makeResult
   let { fields } = query
@@ -287,10 +287,18 @@ export default class RestApi {
     const xoConfigBackups = keyBy(
       [
         {
-          id: 27,
-          created_at: 1687786089427,
-          license_id: 'l_JDJ5JDEwJHVkcmhFZXg4Y3RCbUMvZEw1SGhEUmVaQ2VRdVVXLkVqOVh2MGF3R2hvNW9HSG5VMFZneDdX',
           content: '/rest/v0/cloud/xo-config/backups/27/config.json.gz.enc',
+          created_at: 1687786089427,
+          id: 27,
+          license_id: 'l_JDJ5JDEwJHVkcmhFZXg4Y3RCbUMvZEw1SGhEUmVaQ2VRdVVXLkVqOVh2MGF3R2hvNW9HSG5VMFZneDdX',
+          xoa_id: 'cf27a74a-03c9-0b8d-5b97-4fd1a74420a8',
+        },
+        {
+          content: '/rest/v0/cloud/xo-config/backups/28/config.json.gz',
+          created_at: 1687792298264,
+          id: 28,
+          license_id: 'foo bar',
+          xoa_id: '218b43e8-5622-4d81-adce-69be4252c4de',
         },
       ],
       'id'
@@ -312,7 +320,18 @@ export default class RestApi {
       .get(
         '/cloud/xo-config/backups',
         wrap(async (req, res) => {
-          res.json(Object.values(xoConfigBackups))
+          let configs = Object.values(xoConfigBackups)
+
+          const { limit, filter } = req.query
+          if (filter !== undefined) {
+            configs = configs.filter(CM.parse(filter).createPredicate())
+          }
+          configs.sort((a, b) => a.created_at - b.created_at)
+          if (limit !== undefined) {
+            configs.length = Math.min(limit, configs.length)
+          }
+
+          await sendObjects(configs, req, res)
         })
       )
       .get(
