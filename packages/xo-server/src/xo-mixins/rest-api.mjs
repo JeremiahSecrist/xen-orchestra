@@ -355,7 +355,7 @@ export default class RestApi {
         '/cloud/xo-config/backups/:id/config.*',
         wrap(async (req, res, next) => {
           const config = xoConfigBackups[req.params.id]
-          if (config === undefined || config.content !== req.path) {
+          if (config === undefined || config.content !== req.baseUrl + req.path) {
             return next()
           }
 
