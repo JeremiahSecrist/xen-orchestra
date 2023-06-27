@@ -372,7 +372,11 @@ export default class RestApi {
         '/cloud/xo-config/backups/:id/actions/import',
         json(),
         wrap((req, res) => {
-          res.sendStatus(200)
+          if (!Object.hasOwn(req.query, 'sync')) {
+            return res.sendStatus(500)
+          }
+
+          res.sendStatus(204)
         })
       )
 
