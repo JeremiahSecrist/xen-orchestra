@@ -283,6 +283,10 @@ export default class RestApi {
         })
       )
 
+    api.get('/appliance', (req, res) => {
+      res.json({ id: 'cf27a74a-03c9-0b8d-5b97-4fd1a74420a8' })
+    })
+
     let xoConfigEnabled = true
     const xoConfigBackups = keyBy(
       [
@@ -307,13 +311,16 @@ export default class RestApi {
       .get(
         '/cloud/xo-config',
         wrap(async (req, res) => {
-          res.json({ enabled: xoConfigEnabled })
+          res.json({ enabled: xoConfigEnabled, passphrase: '*obfuscated*' })
         })
       )
       .patch('/cloud/xo-config', json(), async (req, res) => {
-        const { enabled } = req.body
+        const { enabled, passphrase } = req.body
         if (typeof enabled === 'boolean') {
           xoConfigEnabled = enabled
+        }
+        if (typeof passphrase === 'string') {
+          // todo
         }
         res.sendStatus(200)
       })
