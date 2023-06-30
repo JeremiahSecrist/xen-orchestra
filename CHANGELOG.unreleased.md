@@ -34,6 +34,7 @@
 <!--packages-start-->
 
 - @xen-orchestra/backups minor
+- @xen-orchestra/vmware-explorer minor
 - @xen-orchestra/xapi major
 - complex-matcher patch
 - xo-server patch
