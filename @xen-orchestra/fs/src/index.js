@@ -1,14 +1,15 @@
 import execa from 'execa'
 import { parse } from 'xo-remote-parser'
 
-import RemoteHandlerLocal from './local'
+// import RemoteHandlerLocal from './local'
 import RemoteHandlerNfs from './nfs'
 import RemoteHandlerS3 from './s3'
 import RemoteHandlerSmb from './smb'
+import RemoteHandlerDedup from './dedupLocal'
 export { DEFAULT_ENCRYPTION_ALGORITHM, UNENCRYPTED_ALGORITHM, isLegacyEncryptionAlgorithm } from './_encryptor'
 
 const HANDLERS = {
-  file: RemoteHandlerLocal,
+  file: RemoteHandlerDedup,
   nfs: RemoteHandlerNfs,
   s3: RemoteHandlerS3,
 }

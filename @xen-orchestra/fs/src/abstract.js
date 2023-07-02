@@ -268,9 +268,9 @@ export default class RemoteHandlerAbstract {
     await this._mktree(normalizePath(dir), { mode })
   }
 
-  async outputFile(file, data, { dirMode, flags = 'wx' } = {}) {
+  async outputFile(file, data, { dedup = false, dirMode, flags = 'wx' } = {}) {
     const encryptedData = this.#encryptor.encryptData(data)
-    await this._outputFile(normalizePath(file), encryptedData, { dirMode, flags })
+    await this._outputFile(normalizePath(file), encryptedData, { dedup, dirMode, flags })
   }
 
   async read(file, buffer, position) {
@@ -560,17 +560,16 @@ export default class RemoteHandlerAbstract {
     throw new Error('Not implemented')
   }
 
-  async _outputFile(file, data, { dirMode, flags }) {
+  async _outputFile(file, data, { dirMode, flags, dedup = false }) {
     try {
-      return await this._writeFile(file, data, { flags })
+      return await this._writeFile(file, data, { dedup, flags })
     } catch (error) {
       if (error.code !== 'ENOENT') {
         throw error
       }
     }
-
     await this._mktree(dirname(file), { mode: dirMode })
-    return this._outputFile(file, data, { flags })
+    return this._outputFile(file, data, { dedup, flags })
   }
 
   async _outputStream(path, input, { dirMode, validator }) {
