@@ -4,8 +4,8 @@ const EVENT_TIMEOUT = 60e3
 
 class Watcher {
   #abortController
+  #typeWatchers = new Map()
   classes = new Map()
-  typeWatchers = new Map()
   xapi
 
   constructor(xapi) {
@@ -37,7 +37,7 @@ class Watcher {
   async #start() {
     const { xapi } = this
     const { signal } = this.#abortController
-    const watchers = this.#type
+    const watchers = this.#typeWatchers
 
     let token = await xapi.call('event.inject', 'pool', xapi.pool.$ref)
 
@@ -87,7 +87,7 @@ class Cache {
   async #get(type, ref) {
     let record
     try {
-      record = await this.#watcher.xapi.getRecord(type, ref)
+      record = await this.#watcher.xapi.call(`${type}.get_record`, ref)
     } catch (error) {
       if (error.code !== 'HANDLE_INVALID') {
         throw error
@@ -109,6 +109,10 @@ class Cache {
     }
 
     return record
+  }
+
+  async getByUuid(type, uuid) {
+    return this.get(type, await this.#watcher.xapi.call(`${type}.get_by_uuid`, uuid))
   }
 }
 exports.Cache = Cache
