@@ -4,23 +4,50 @@ const EVENT_TIMEOUT = 60e3
 
 class Watcher {
   #abortController
-  watchedTypes = new Map()
+  classes = new Map()
+  typeWatchers = new Map()
   xapi
 
   constructor(xapi) {
     this.xapi = xapi
   }
 
+  async call(method, params, { signal }) {
+    const taskRef = await this.xapi.call('Async.' + method, params, { signal })
+
+    return new Promise((resolve, reject) => {
+      const stop = this.watch(
+        'task',
+        taskRef,
+        task => {
+          const { status } = task
+          if (status === 'success') {
+            stop()
+            resolve(task.status)
+          } else if (status === 'cancelled' || status === 'failure') {
+            stop()
+            reject(task.error_info)
+          }
+        },
+        { signal }
+      )
+    })
+  }
+
   async #start() {
     const { xapi } = this
     const { signal } = this.#abortController
+    const watchers = this.#type
 
-    let fromToken = await xapi.call('event.inject', 'pool', xapi.pool.$ref)
+    let token = await xapi.call('event.inject', 'pool', xapi.pool.$ref)
 
     while (true) {
       signal.throwIfRequested()
 
-      const events = await xapi.call({ signal }, 'event.from', this.watchedTypes, fromToken, EVENT_TIMEOUT)
+      const result = await xapi.call({ signal }, 'event.from', this.classes, token, EVENT_TIMEOUT)
+
+      for (const event of result.events) {
+      }
     }
     this.#abortController = undefined
   }
@@ -60,7 +87,7 @@ class Cache {
   async #get(type, ref) {
     let record
     try {
-      record = await this.#watcher.xapi.get(type, ref)
+      record = await this.#watcher.xapi.getRecord(type, ref)
     } catch (error) {
       if (error.code !== 'HANDLE_INVALID') {
         throw error
