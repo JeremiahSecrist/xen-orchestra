@@ -1,10 +1,12 @@
 import { after, beforeEach, describe, it } from 'node:test'
 import assert from 'node:assert'
+import fs from 'node:fs/promises'
 import { getSyncedHandler } from './index.js'
 import { Disposable, pFromCallback } from 'promise-toolbox'
 import tmp from 'tmp'
 import execa from 'execa'
 import { rimraf } from 'rimraf'
+import { randomBytes } from 'node:crypto'
 
 // https://xkcd.com/221/
 const data = 'H2GbLa0F2J4LHFLRwLP9zN4dGWJpdx1T6eGWra8BRlV9fBpRGtWIOSKXjU8y7fnxAWVGWpbYPYCwRigvxRSTcuaQsCtwvDNKMmFwYpsGMS14akgBD3EpOMPpKIRRySOsOeknpr48oopO1n9eq0PxGbOcY4Q9aojRu9rn1SMNyjq7YGzwVQEm6twA3etKGSYGvPJVTs2riXm7u6BhBh9VZtQDxQEy5ttkHiZUpgLi6QshSpMjL7dHco8k6gzGcxfpoyS5IzaQeXqDOeRjE6HNn27oUXpze5xRYolQhxA7IqdfzcYwWTqlaZb7UBUZoFCiFs5Y6vPlQVZ2Aw5YganLV1ZcIz78j6TAtXJAfXrDhksm9UteQul8RYT0Ur8AJRYgiGXOsXrWWBKm3CzZci6paLZ2jBmGfgVuBJHlvgFIjOHiVozjulGD4SwKQ2MNqUOylv89NTP1BsJuZ7MC6YCm5yix7FswoE7Y2NhDFqzEQvseRQFyz52AsfuqRY7NruKHlO7LOSI932che2WzxBAwy78Sk1eRHQLsZ37dLB4UkFFIq6TvyjJKznTMAcx9HDOSrFeke6KfsDB1A4W3BAxJk40oAcFMeM72Lg97sJExMJRz1m1nGQJEiGCcnll9G6PqEfHjoOhdDLgN2xewUyvbuRuKEXXxD1H6Tz1iWReyRGSagQNLXvqkKoHoxu3bvSi8nWrbtEY6K2eHLeF5bYubYGXc5VsfiCQNPEzQV4ECzaPdolRtbpRFMcB5aWK70Oew3HJkEcN7IkcXI9vlJKnFvFMqGOHKujd4Tyjhvru2UFh0dAkEwojNzz7W0XlASiXRneea9FgiJNLcrXNtBkvIgw6kRrgbXI6DPJdWDpm3fmWS8EpOICH3aTiXRLQUDZsReAaOsfau1FNtP4JKTQpG3b9rKkO5G7vZEWqTi69mtPGWmyOU47WL1ifJtlzGiFbZ30pcHMc0u4uopHwEQq6ZwM5S6NHvioxihhHQHO8JU2xvcjg5OcTEsXtMwIapD3re'
@@ -23,10 +25,9 @@ describe('dedup tests', () => {
   })
 
   it('works in general case ', async () => {
-    await Disposable.use(getSyncedHandler({ url: `file://${dir}` }), async handler=>{
-        assert.doesNotReject(handler.list('xo-block-store'))
-
+    await Disposable.use(getSyncedHandler({ url: `file://${dir}`},{dedup: true} ), async handler=>{
         await handler.outputFile('in/a/sub/folder/file', data, {dedup: true})
+        assert.doesNotReject(handler.list('xo-block-store'))
         assert.strictEqual( (await handler.list('xo-block-store')).length, 1)
         assert.strictEqual( (await handler.list('in/a/sub/folder')).length, 1)
         assert.strictEqual( (await handler.readFile('in/a/sub/folder/file')).toString('utf-8'), data)
@@ -53,13 +54,37 @@ describe('dedup tests', () => {
     }) 
   })
 
-  it('handles edge cases : source deleted', async()=>{
-    await Disposable.use(getSyncedHandler({ url: `file://${dir}` }), async handler=>{
-      await handler.outputFile('in/a/sub/folder/file', data, {dedup: true})
+  it('garbage collector', async()=>{
+    await Disposable.use(getSyncedHandler({ url: `file://${dir}` },{dedup: true}), async handler=>{
+
+    await handler.outputFile('in/anotherfolder/file', data, {dedup: true})
+    await handler.outputFile('in/a/sub/folder/file', randomBytes(1024), {dedup: true})
+    await fs.unlink(`${dir}/in/a/sub/folder/file`)
+    assert.strictEqual( (await handler.list('xo-block-store')).length, 2)
+
+    await handler.deduplicationGarbageCollector()
+
+    assert.strictEqual( (await handler.list('xo-block-store')).length, 1)
     
+    })
+  })
+
+  it('compute support', async ()=>{
+    await Disposable.use(getSyncedHandler({ url: `file://${dir}` },{dedup: true}), async handler=>{
+
+      const support = await handler.checkSupport()
+      assert.strictEqual(support.dedup, true)
+    })
+
+  })
+ 
+
+  it('handles edge cases : source deleted', async()=>{
+    await Disposable.use(getSyncedHandler({ url: `file://${dir}` },{dedup: true}), async handler=>{
+      await handler.outputFile('in/a/sub/folder/edge', data, {dedup: true})
       await handler.unlink(dataPath)  
       // no error if source si already deleted 
-      await assert.doesNotReject(()=>handler.unlink('in/a/sub/folder/file'))
+      await assert.doesNotReject(()=>handler.unlink('in/a/sub/folder/edge'))
   
     })
   })
