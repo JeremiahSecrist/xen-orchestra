@@ -1,18 +1,17 @@
+
+import assert from 'node:assert'
 import execa from 'execa'
 import LocalHandler from './local'
 import fs from 'fs-extra'
-import assert from 'node:assert'
-import { createHash } from 'node:crypto'
+import { normalize as normalizePath } from './path'
+import { createHash, randomBytes } from 'node:crypto'
+import { asyncEach } from '@vates/async-each'
+import { fromCallback, ignoreErrors } from 'promise-toolbox'
 
 export default class DedupedLocalHandler extends LocalHandler {
-  #dedupFolder = '/xo-block-store'
+  #dedupDirectory = '/xo-block-store'
   #hashMethod = 'sha256'
   #attributeKey = `user.hash.${this.#hashMethod}`
-
-  async _sync() {
-    await super._sync()
-    await this.mkdir(this.#dedupFolder)
-  }
 
   #hash(data) {
     return createHash(this.#hashMethod).update(data).digest('hex')
@@ -81,7 +80,7 @@ export default class DedupedLocalHandler extends LocalHandler {
   // split path to keep a sane number of file per directory
   #computeDeduplicationPath(hash) {
     assert.strictEqual(hash.length % 4, 0)
-    let path = this.#dedupFolder
+    let path = this.#dedupDirectory
     for (let i = 0; i < hash.length; i++) {
       if (i % 4 === 0) {
         path += '/'
@@ -117,5 +116,61 @@ export default class DedupedLocalHandler extends LocalHandler {
       return this.#writeDeduplicationSource(path, hash)
     }
     return path
+  }
+
+  /**
+   * delete empty dirs
+   * delete file source thath don't have any more links
+   * 
+   * @returns Promise
+   */
+
+  async deduplicationGarbageCollector(dir = this.#dedupDirectory){
+    try {
+      return await this._rmdir(dir)
+    } catch (error) {
+      if (error.code !== 'ENOTEMPTY') {
+        throw error
+      }
+    }
+
+    const files = await this._list(dir)
+    await asyncEach(files, async  file =>{
+      const stat = await fs.stat(file)
+      // have to check the stat to ensure we don't try to delete 
+      // the directories : they d'ont have links
+      if(stat.isDirectory()){
+        return this.deduplicationGarbageCollector(`${dir}/${file}`)
+      }
+      if(stat.nlink === 1){
+        return fs.unlink(`${dir}/${file}`)
+      }
+
+    })
+    return this._rmtree(dir)
+
+  }
+
+
+  async checkSupport(){
+    const supported =super.checkSupport()
+    const sourceFileName = normalizePath(`${Date.now()}.sourcededup`)
+    const destFileName = normalizePath(`${Date.now()}.destdedup`)
+    try{
+      const SIZE = 1024 * 1024
+      const data = await fromCallback(randomBytes, SIZE)
+      const hash = this.#hash(data)
+      await this._outputFile(sourceFileName, data, { flags: 'wx' })
+      await this.#setExtendedAttribute(sourceFileName, this.#attributeKey, hash)
+      await this.#link(sourceFileName, destFileName)
+      supported.dedup =  (hash === await this.#getExtendedAttribute(sourceFileName, this.#attributeKey))
+    } catch (error) {
+      warn(`error while testing the dedup`, { error })
+    } finally {
+      ignoreErrors.call(this._unlink(sourceFileName))
+      ignoreErrors.call(this._unlink(destFileName))
+    }
+    return supported
+
   }
 }

@@ -206,4 +206,5 @@ export default class LocalHandler extends RemoteHandlerAbstract {
   _writeFile(file, data, { flags }) {
     return this.#addSyncStackTrace(fs.writeFile, this.getFilePath(file), data, { flag: flags })
   }
+
 }
