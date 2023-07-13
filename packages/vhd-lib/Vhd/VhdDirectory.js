@@ -159,7 +159,7 @@ exports.VhdDirectory = class VhdDirectory extends VhdAbstract {
     }
   }
 
-  async _writeChunk(partName, buffer, dedup=false) {
+  async _writeChunk(partName, buffer, dedup = false) {
     assert.notStrictEqual(
       this._opts?.flags,
       'r',
@@ -169,7 +169,6 @@ exports.VhdDirectory = class VhdDirectory extends VhdAbstract {
     // in case of VhdDirectory, we want to create the file if it does not exists
     const flags = this._opts?.flags === 'r+' ? 'w' : this._opts?.flags
     const compressed = await this.#compressor.compress(buffer)
-
     return this._handler.outputFile(this.#getChunkPath(partName), compressed, { flags, dedup })
   }
 
@@ -264,7 +263,7 @@ exports.VhdDirectory = class VhdDirectory extends VhdAbstract {
     }
     try {
       const blockExists = this.containsBlock(blockId)
-      if(blockExists && this.#dedup){
+      if (blockExists && this.#dedup) {
         // this will trigger the dedup store cleaning if needed
         await this._handler.unlink(this._getFullBlockPath(blockId))
       }

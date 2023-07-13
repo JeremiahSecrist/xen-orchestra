@@ -4,7 +4,7 @@ import fs from 'fs-extra'
 import lockfile from 'proper-lockfile'
 import { createLogger } from '@xen-orchestra/log'
 import { asyncEach } from '@vates/async-each'
-import { fromEvent, fromCallback, ignoreErrors , retry } from 'promise-toolbox'
+import { fromEvent, fromCallback, ignoreErrors, retry } from 'promise-toolbox'
 
 import RemoteHandlerAbstract from './abstract'
 import { normalize as normalizePath } from './path'
@@ -205,14 +205,13 @@ export default class LocalHandler extends RemoteHandlerAbstract {
     return this.#addSyncStackTrace(fs.truncate, this.getFilePath(file), len)
   }
 
-  async #localUnlink(filePath){
+  async #localUnlink(filePath) {
     return await this.#addSyncStackTrace(retry, () => fs.unlink(filePath), this.#retriesOnEagain)
-
   }
   async _unlink(file) {
     const filePath = this.getFilePath(file)
     let hash
-    if(this.#dedup){
+    if (this.#dedup) {
       try {
         // get hash before deleting the file
         hash = await this.#getExtendedAttribute(file, this.#attributeKey)
@@ -228,21 +227,20 @@ export default class LocalHandler extends RemoteHandlerAbstract {
     // implies #dedup is on
     if (hash) {
       const dedupPath = this.getFilePath(this.#computeDeduplicationPath(hash))
-      try{
+      try {
         const { nlink } = await fs.stat(dedupPath)
         // get the number of copy still using these data
         // delete source if it's alone
         if (nlink === 1) {
           await this.#localUnlink(dedupPath)
-        } 
-      }catch(error){
+        }
+      } catch (error) {
         // no problem if another process deleted the source or if we unlink directly the source file
-        if(error.code !== 'ENOENT'){
+        if (error.code !== 'ENOENT') {
           throw error
         }
       }
     }
-    
   }
 
   _writeFd(file, buffer, position) {
@@ -263,21 +261,18 @@ export default class LocalHandler extends RemoteHandlerAbstract {
       // this linked file will have the same extended attributes
       // (used for unlink)
       return this.#link(dedupPath, file)
-
     }
     // fallback
-    return  this.#localWriteFile(file, data, { flags })
+    return this.#localWriteFile(file, data, { flags })
   }
-
 
   #hash(data) {
     return createHash(this.#hashMethod).update(data).digest('hex')
   }
 
-
   // @todo : use a multiplatform package instead
   async #getExtendedAttribute(file, attribueName) {
-    const {stdout} = await execa('getfattr', ['-n', attribueName, '--only-value', this.getFilePath(file)])
+    const { stdout } = await execa('getfattr', ['-n', attribueName, '--only-value', this.getFilePath(file)])
     return stdout
   }
   async #setExtendedAttribute(file, attribueName, value) {
@@ -333,53 +328,81 @@ export default class LocalHandler extends RemoteHandlerAbstract {
   /**
    * delete empty dirs
    * delete file source thath don't have any more links
-   * 
+   *
    * @returns Promise
    */
 
-  async deduplicationGarbageCollector(dir = this.#dedupDirectory, alreadyVisited = false){
+  async deduplicationGarbageCollector(dir = this.#dedupDirectory, alreadyVisited = false) {
     try {
-       await this._rmdir(dir)
-       return
+      await this._rmdir(dir)
+      return
     } catch (error) {
-      if (error.code !== 'ENOTEMPTY' ) {
+      if (error.code !== 'ENOTEMPTY') {
         throw error
       }
     }
     // the directory may not be empty after a first visit
-    if(alreadyVisited){
+    if (alreadyVisited) {
       return
     }
 
     const files = await this._list(dir)
-    await asyncEach(files, async  file =>{
-      const stat = await fs.stat( this.getFilePath(`${dir}/${file}`))
-      // have to check the stat to ensure we don't try to delete 
-      // the directories : they don't have links
-      if(stat.isDirectory()){
-        return this.deduplicationGarbageCollector(`${dir}/${file}`)
-      }
-      if(stat.nlink === 1){
-        return fs.unlink( this.getFilePath(`${dir}/${file}`))
-      }
-
-    })
-    return this.deduplicationGarbageCollector(dir,true)
-
+    await asyncEach(
+      files,
+      async file => {
+        const stat = await fs.stat(this.getFilePath(`${dir}/${file}`))
+        // have to check the stat to ensure we don't try to delete
+        // the directories : they don't have links
+        if (stat.isDirectory()) {
+          return this.deduplicationGarbageCollector(`${dir}/${file}`)
+        }
+        if (stat.nlink === 1) {
+          return fs.unlink(this.getFilePath(`${dir}/${file}`))
+        }
+      },
+      { concurrency: 2 }
+    ) // since we do a recursive traveral with a deep tree)
+    return this.deduplicationGarbageCollector(dir, true)
   }
 
-  async checkSupport(){
+  async deduplicationStats(dir = this.#dedupDirectory) {
+    let nbSourceBlocks = 0
+    let nbBlocks = 0
+    const files = await this._list(dir)
+    await asyncEach(
+      files,
+      async file => {
+        const stat = await fs.stat(this.getFilePath(`${dir}/${file}`))
+        if (stat.isDirectory()) {
+          const { nbSourceBlocks: nbSourceInChild, nbBlocks: nbBlockInChild } = await this.deduplicationStats(
+            `${dir}/${file}`
+          )
+          nbSourceBlocks += nbSourceInChild
+          nbBlocks += nbBlockInChild
+        } else {
+          nbSourceBlocks++
+          nbBlocks += stat.nlink - 1 // ignore current
+        }
+      },
+      { concurrency: 2 }
+    )
+    return { nbSourceBlocks, nbBlocks }
+  }
+
+  async checkSupport() {
     const supported = await super.checkSupport()
     const sourceFileName = normalizePath(`${Date.now()}.sourcededup`)
     const destFileName = normalizePath(`${Date.now()}.destdedup`)
-    try{
+    try {
       const SIZE = 1024 * 1024
       const data = await fromCallback(randomBytes, SIZE)
       const hash = this.#hash(data)
       await this._outputFile(sourceFileName, data, { flags: 'wx', dedup: false })
       await this.#setExtendedAttribute(sourceFileName, this.#attributeKey, hash)
       await this.#link(sourceFileName, destFileName)
-      supported.dedup =  (hash === await this.#getExtendedAttribute(sourceFileName, this.#attributeKey))
+      const linkedData = await this._readFile(destFileName)
+      supported.hardLink = linkedData.equals(data)
+      supported.extendedAttributes = hash === (await this.#getExtendedAttribute(sourceFileName, this.#attributeKey))
     } catch (error) {
       warn(`error while testing the dedup`, { error })
     } finally {
@@ -388,6 +411,4 @@ export default class LocalHandler extends RemoteHandlerAbstract {
     }
     return supported
   }
-
-
 }

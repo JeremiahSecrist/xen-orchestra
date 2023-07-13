@@ -397,6 +397,10 @@ export default class RemoteHandlerAbstract {
     }
   }
 
+  async checkSupport() {
+    return {}
+  }
+
   async test() {
     const SIZE = 1024 * 1024 * 10
     const testFileName = normalizePath(`${Date.now()}.test`)
