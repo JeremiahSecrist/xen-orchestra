@@ -78,7 +78,7 @@ exports.VhdDirectory = class VhdDirectory extends VhdAbstract {
   #header
   footer
   #compressor
-  #dedup = true
+  #dedup
 
   get compressionType() {
     return this.#compressor.id
@@ -103,8 +103,9 @@ exports.VhdDirectory = class VhdDirectory extends VhdAbstract {
     this.#uncheckedBlockTable = blockTable
   }
 
-  static async open(handler, path, { flags = 'r+' } = {}) {
-    const vhd = new VhdDirectory(handler, path, { flags })
+  static async open(handler, path, { compression, flags = 'r+' } = {}) {
+    const dedup = path.endsWith('dedup.vhd')
+    const vhd = new VhdDirectory(handler, path, { compression, dedup, flags })
 
     // openning a file for reading does not trigger EISDIR as long as we don't really read from it :
     // https://man7.org/linux/man-pages/man2/open.2.html
@@ -118,9 +119,9 @@ exports.VhdDirectory = class VhdDirectory extends VhdAbstract {
     }
   }
 
-  static async create(handler, path, { flags = 'wx+', compression } = {}) {
+  static async create(handler, path, { flags = 'wx+', compression, dedup } = {}) {
     await handler.mktree(path)
-    const vhd = new VhdDirectory(handler, path, { flags, compression })
+    const vhd = new VhdDirectory(handler, path, { flags, compression, dedup })
     return {
       dispose: () => {},
       value: vhd,
@@ -133,6 +134,7 @@ exports.VhdDirectory = class VhdDirectory extends VhdAbstract {
     this._path = path
     this._opts = opts
     this.#compressor = getCompressor(opts?.compression)
+    this.#dedup = opts?.dedup ?? false
     this.writeBlockAllocationTable = synchronized()(this.writeBlockAllocationTable)
   }
 
@@ -265,7 +267,7 @@ exports.VhdDirectory = class VhdDirectory extends VhdAbstract {
       const blockExists = this.containsBlock(blockId)
       if (blockExists && this.#dedup) {
         // this will trigger the dedup store cleaning if needed
-        await this._handler.unlink(this._getFullBlockPath(blockId))
+        await this._handler.unlink(this._getFullBlockPath(blockId), { dedup: true })
       }
       await this._handler.rename(childBlockPath, this._getFullBlockPath(blockId))
       if (!blockExists) {

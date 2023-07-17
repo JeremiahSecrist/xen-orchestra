@@ -40,12 +40,12 @@ describe('dedup tests', () => {
       assert.strictEqual((await handler.list('in/anotherfolder')).length, 1)
       assert.strictEqual((await handler.readFile('in/anotherfolder/file')).toString('utf-8'), data)
 
-      await handler.unlink('in/a/sub/folder/file')
+      await handler.unlink('in/a/sub/folder/file', { dedup: true })
       // source is still here
       assert.strictEqual((await handler.readFile(dataPath)).toString('utf-8'), data)
       assert.strictEqual((await handler.readFile('in/anotherfolder/file')).toString('utf-8'), data)
 
-      await handler.unlink('in/anotherfolder/file')
+      await handler.unlink('in/anotherfolder/file', { dedup: true })
       // source should have been deleted
       assert.strictEqual(
         (
@@ -63,7 +63,7 @@ describe('dedup tests', () => {
     await Disposable.use(getSyncedHandler({ url: `file://${dir}` }, { dedup: true }), async handler => {
       await handler.outputFile('in/anotherfolder/file', data, { dedup: true })
       await handler.outputFile('in/a/sub/folder/file', randomBytes(1024), { dedup: true })
-      await fs.unlink(`${dir}/in/a/sub/folder/file`)
+      await fs.unlink(`${dir}/in/a/sub/folder/file`, { dedup: true })
       assert.strictEqual((await handler.list('xo-block-store')).length, 2)
 
       await handler.deduplicationGarbageCollector()
@@ -83,9 +83,9 @@ describe('dedup tests', () => {
   it('handles edge cases : source deleted', async () => {
     await Disposable.use(getSyncedHandler({ url: `file://${dir}` }, { dedup: true }), async handler => {
       await handler.outputFile('in/a/sub/folder/edge', data, { dedup: true })
-      await handler.unlink(dataPath)
+      await handler.unlink(dataPath, { dedup: true })
       // no error if source si already deleted
-      await assert.doesNotReject(() => handler.unlink('in/a/sub/folder/edge'))
+      await assert.doesNotReject(() => handler.unlink('in/a/sub/folder/edge', { dedup: true }))
     })
   })
 })

@@ -5,6 +5,7 @@ import lockfile from 'proper-lockfile'
 import { createLogger } from '@xen-orchestra/log'
 import { asyncEach } from '@vates/async-each'
 import { fromEvent, fromCallback, ignoreErrors, retry } from 'promise-toolbox'
+import { synchronized } from 'decorator-synchronized'
 
 import RemoteHandlerAbstract from './abstract'
 import { normalize as normalizePath } from './path'
@@ -43,7 +44,7 @@ export default class LocalHandler extends RemoteHandlerAbstract {
   #addSyncStackTrace
   #retriesOnEagain
 
-  #dedup = false
+  #supportDedup
   #dedupDirectory = '/xo-block-store'
   #hashMethod = 'sha256'
   #attributeKey = `user.hash.${this.#hashMethod}`
@@ -59,7 +60,6 @@ export default class LocalHandler extends RemoteHandlerAbstract {
         code: 'EAGAIN',
       },
     }
-    this.#dedup = opts.dedup === true
   }
   get type() {
     return 'file'
@@ -208,10 +208,11 @@ export default class LocalHandler extends RemoteHandlerAbstract {
   async #localUnlink(filePath) {
     return await this.#addSyncStackTrace(retry, () => fs.unlink(filePath), this.#retriesOnEagain)
   }
-  async _unlink(file) {
+  async _unlink(file, { dedup } = {}) {
     const filePath = this.getFilePath(file)
     let hash
-    if (this.#dedup) {
+    // only try to read dedup source if we try to delete something deduplicated
+    if (dedup === true) {
       try {
         // get hash before deleting the file
         hash = await this.#getExtendedAttribute(file, this.#attributeKey)
@@ -224,8 +225,8 @@ export default class LocalHandler extends RemoteHandlerAbstract {
     // delete file in place
     await this.#localUnlink(filePath)
 
-    // implies #dedup is on
-    if (hash) {
+    // implies we are on a deduplicated file
+    if (hash !== undefined) {
       const dedupPath = this.getFilePath(this.#computeDeduplicationPath(hash))
       try {
         const { nlink } = await fs.stat(dedupPath)
@@ -251,16 +252,22 @@ export default class LocalHandler extends RemoteHandlerAbstract {
     return this.#addSyncStackTrace(fs.writeFile, this.getFilePath(file), data, { flag: flags })
   }
 
-  // even in a deduplicated handler, dedup is opt in
   async _writeFile(file, data, { flags, dedup }) {
-    if (dedup === true && this.#dedup) {
-      const hash = this.#hash(data)
-      // create the file (if not already present) in the store
-      const dedupPath = await this.#writeDeduplicationSource(hash, data)
-      // hard link to the target place
-      // this linked file will have the same extended attributes
-      // (used for unlink)
-      return this.#link(dedupPath, file)
+    if (dedup === true) {
+      // only compute support once , and only if needed
+      if (this.#supportDedup === undefined) {
+        const supported = await this.checkSupport()
+        this.#supportDedup = supported.hardLink === true && supported.extendedAttributes === true
+      }
+      if (this.#supportDedup) {
+        const hash = this.#hash(data)
+        // create the file (if not already present) in the store
+        const dedupPath = await this.#writeDeduplicationSource(hash, data)
+        // hard link to the target place
+        // this linked file will have the same extended attributes
+        // (used for unlink)
+        return this.#link(dedupPath, file)
+      }
     }
     // fallback
     return this.#localWriteFile(file, data, { flags })
@@ -389,6 +396,7 @@ export default class LocalHandler extends RemoteHandlerAbstract {
     return { nbSourceBlocks, nbBlocks }
   }
 
+  @synchronized()
   async checkSupport() {
     const supported = await super.checkSupport()
     const sourceFileName = normalizePath(`${Date.now()}.sourcededup`)

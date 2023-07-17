@@ -116,8 +116,21 @@ describe('VhdAbstract', async () => {
       // it should clean an existing directory
       await fs.mkdir(targetFileName)
       await fs.writeFile(`${targetFileName}/dummy`, 'I exists')
-      await VhdAbstract.unlink(handler, `${targetFileName}/dummy`)
+      await VhdAbstract.unlink(handler, `${targetFileName}`)
       assert.equal(await fs.exists(`${targetFileName}/dummy`), false)
+    })
+  })
+
+  it('unlinks a deduplicated VhdDirectory', async () => {
+    const initalSize = 4
+    const vhdDirectory = `${tempDir}/random.dedup.vhd`
+    await createRandomVhdDirectory(vhdDirectory, initalSize)
+
+    await Disposable.use(async function* () {
+      const handler = yield getSyncedHandler({ url: 'file:///' })
+
+      await VhdAbstract.unlink(handler, vhdDirectory)
+      assert.equal(await fs.exists(vhdDirectory), false)
     })
   })
 

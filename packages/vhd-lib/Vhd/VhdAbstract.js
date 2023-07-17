@@ -206,7 +206,8 @@ exports.VhdAbstract = class VhdAbstract {
       await handler.unlink(resolved)
     } catch (err) {
       if (err.code === 'EISDIR') {
-        await handler.rmtree(resolved)
+        const dedup = resolved.endsWith('.dedup.vhd')
+        await handler.rmtree(resolved, { dedup })
       } else {
         throw err
       }
