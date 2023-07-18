@@ -1,4 +1,5 @@
 import { Client } from '@vates/node-vsphere-soap'
+import { createLogger } from '@xen-orchestra/log'
 import { dirname } from 'node:path'
 import { EventEmitter } from 'node:events'
 import { strictEqual, notStrictEqual } from 'node:assert'
@@ -8,6 +9,8 @@ import https from 'https'
 import parseVmdk from './parsers/vmdk.mjs'
 import parseVmsd from './parsers/vmsd.mjs'
 import parseVmx from './parsers/vmx.mjs'
+
+const { warn } = createLogger('xo:vmware-explorer:esxi')
 
 export default class Esxi extends EventEmitter {
   #client
@@ -110,7 +113,7 @@ export default class Esxi extends EventEmitter {
         const res = this.#download(dataStore, path, range)
         return res
       } catch (error) {
-        console.warn('got error , will retry in 2seconds', error)
+        warn('got error , will retry in 2 seconds', { error })
         lastError = error
       }
       await new Promise(resolve => setTimeout(() => resolve(), 2000))
