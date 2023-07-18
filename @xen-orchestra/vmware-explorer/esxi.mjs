@@ -110,7 +110,7 @@ export default class Esxi extends EventEmitter {
     let lastError
     while (tries > 0) {
       try {
-        const res = this.#download(dataStore, path, range)
+        const res = await this.#download(dataStore, path, range)
         return res
       } catch (error) {
         warn('got error , will retry in 2 seconds', { error })
